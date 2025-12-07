@@ -4,6 +4,7 @@
  */
 
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
 
 /** A database instance. */
@@ -34,6 +35,9 @@ typedef enum {
 	/// The block to read or check is outside the maximum size of the database.
 	DB_READ_OUT_OF_BOUNDS,
 
+	/// The block to read hasn't been computed yet.
+	DB_READ_NOT_READY,
+
 	/// The computed block to write has already been computed.
 	DB_WRITE_ALREADY_COMPUTED,
 
@@ -61,6 +65,9 @@ typedef struct {
 
 		/// Returned block.
 		uint64_t block;
+
+		/// Returned boolean.
+		bool boolean;
 	} value;
 } db_return;
 
@@ -105,6 +112,22 @@ db_return db_read_uncomputed(database * const db);
  * @return the position for one unchecked block
  */
 db_return db_read_unchecked(database * const db);
+
+/**
+ * @brief Is the block at the given position computed?
+ * @param database the database to query
+ * @param position the position of the block to query
+ * @return whether the block has been computed
+ */
+db_return db_read_is_computed(database * const db, const uint64_t position);
+
+/**
+ * @brief Is the block at the given position checked?
+ * @param database the database to query
+ * @param position the position of the block to query
+ * @return whether the block has been checked
+ */
+db_return db_read_is_checked(database * const db, const uint64_t position);
 
 /**
  * @brief Reads one block.

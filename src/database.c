@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -221,7 +222,7 @@ db_return db_open(const char * const path) {
 	if (memcmp(header.magic_number, MAGIC_NUMBER, 8) != 0
 			|| header.version != VERSION) {
 		fclose(file);
-		return (db_return){ .errno = DB_OPEN_FAIL };
+		return (db_return){ .errno = DB_OPEN_WRONG_FORMAT };
 	}
 
 	// Once we have the file, we can construct the database.
@@ -246,6 +247,126 @@ db_return db_open(const char * const path) {
 
 	return (db_return){
 		.errno = DB_SUCCESS,
-		.value = { .database = db }
+		.value = { .database = db },
+	};
+}
+
+void db_close(database * const db) {
+	munmap(db->map, db->length);
+	close(db->fd);
+	free(db);
+}
+
+/**
+ * @brief Reads a position for a block.
+ * @param database the database to query
+ * @param offset if there is an offset in the relocation table to handle
+ * @return the position of a bit not set in the relocation header
+ *
+ * For the errors, it returns the error DB_READ_OUT_OF_BOUNDS which
+ * must be changed to DB_READ_NO_UNCOMPUTED/UNCHECKED by the caller.
+ */
+static db_return db_read_position(database * const db, const uint64_t offset) {
+	// We need to read the bytes from the offset_rel but no more than
+	// offset_bitmap. If a byte is no 0xFF, it means there is at least a
+	// 0 and we get it.
+	for (uint64_t k = 0; k < db->offset_bitmap; ++k) {
+		if (db->map[db->offset_rel + offset + k] == 0xFF)
+			continue;
+
+		// We parsed k bytes, meaning k * 8 16-digit blocks.
+		// Now we need to know which one inside the current 8 bits is null.
+		const uint8_t byte = db->map[db->offset_rel + offset + k];
+		for (uint8_t shift = 8; shift > 0; --shift) {
+			const uint8_t bit = byte >> (shift - 1);
+			if ((bit & 1) == 0) {
+				// We got the position (8 - shift) of the bit inside the byte.
+				return (db_return){
+					.errno = DB_SUCCESS,
+					.value = { .position = 8 * k + (8 - shift) },
+				};
+			}
+		}
+
+		// We aren't supposed to get out, because if the byte is not
+		// all 1, there is at least a 0.
+	}
+
+	// We came out, meaning we computed or checked every block.
+	return (db_return){ .errno = DB_READ_OUT_OF_BOUNDS };
+}
+
+
+db_return db_read_uncomputed(database * const db) {
+	db_return ret = db_read_position(db, 0);
+
+	if (ret.errno == DB_SUCCESS)
+		return ret;
+
+	return (db_return){ .errno = DB_READ_NO_UNCOMPUTED };
+}
+
+db_return db_read_unchecked(database * const db) {
+	db_return ret = db_read_position(db, db->offset_bitmap);
+
+	if (ret.errno == DB_SUCCESS)
+		return ret;
+
+	return (db_return){ .errno = DB_READ_NO_UNCHECKED };
+}
+
+/**
+ * @brief Reads a computed/checked flag.
+ * @param database the database to query
+ * @param position the position of the block to query
+ * @param offset an optional offset inside the relocation table
+ * @return whether the block at position has its flag set
+ */
+static db_return db_read_flag(database * const db, const uint64_t position, const uint64_t offset) {
+	if (position > db->maximum_digits)
+		return (db_return){ .errno = DB_READ_OUT_OF_BOUNDS };
+
+	// We first fetch the byte where the block flag is set.
+	const uint8_t byte = db->map[db->offset_rel + offset + position / 8];
+
+	// We then query the flag.
+	const uint8_t shift = 8 - (position % 8) - 1;
+	const bool is_set = (byte >> shift) & 1;
+
+	return (db_return){
+		.errno = DB_SUCCESS,
+		.value = { .boolean = is_set },
+	};
+}
+
+
+db_return db_read_is_computed(database * const db, const uint64_t position) {
+	return db_read_flag(db, position, 0);
+}
+
+db_return db_read_is_checked(database * const db, const uint64_t position) {
+	return db_read_flag(db, position, db->offset_bitmap);
+}
+
+db_return db_read(database * const db, const uint64_t position) {
+	db_return is_computed = db_read_is_computed(db, position);
+	if (is_computed.errno != DB_SUCCESS)
+		return is_computed;
+
+	if (is_computed.value.boolean != true)
+		return (db_return){ .errno = DB_READ_NOT_READY };
+
+	// We store the block inside a uint64_t.
+	uint64_t block = 0;
+	for (uint8_t k = 0; k < 8; ++k) {
+		// A 16-byte block fits inside 8 bytes.
+		// So our position must be multiplied by 8.
+		const uint8_t byte = db->map[db->offset_data + 8 * position + k];
+		block = (block << 8) | byte;
+	}
+
+	return (db_return){
+		.errno = DB_SUCCESS,
+		.value = { .block = block },
 	};
 }

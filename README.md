@@ -81,3 +81,22 @@ also thinking of an implementation that would allow the program to run
 migrations on a database file (to change the limit) and that would allow the
 user to specify the wanted size when launching the server rather than when
 compiling the tool.
+
+## What to do add in the following steps
+
+I must finish to write the database implementation. To do so, I also need
+to implement the exclusive mutexes on the file (concurrent reading, exclusive
+writing).
+
+To improve performance, I shall use `const`, `restrict`, `register`,
+`inline`, `static` where possible.
+
+There are a lot of places where I use magic numbers. Sometimes, an 8 is
+to have a shift, sometimes this is the length of a 16-digit block. I need
+to introduce `#define` to be clearer.
+
+I also need to document the fact I use libraries (`openmp`, `mpfr`, `gmp`,
+will I also use `libdivide`?).
+
+Finally, I also need to add formatting to my Makefile, in order to have a
+consistent style (and to have lines that fit my terminal width).
