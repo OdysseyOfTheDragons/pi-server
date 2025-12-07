@@ -6,12 +6,20 @@ SRC_DIR := ./src
 BUILD_DIR_ROOT := ./build
 INCLUDE_DIR := ./include
 
+HIGH_PRECISION ?= 0
+
 ### Compilation variables
 CC := gcc
-BASE_FLAGS := -pedantic -ansi -Wall -Wextra
+BASE_FLAGS := -pedantic -std=c99 -Wall -Wextra -Werror -fopenmp
 DEBUG_FLAGS := -Og -g -ggdb -fsanitize=address
 RELEASE_FLAGS := -O3 -Ofast -ffast-math -march=native -funroll-loops
-LDFLAGS := -lm -flto
+LDFLAGS := -flto
+
+ifeq ($(HIGH_PRECISIO),0)
+	LDFLAGS += -lm
+else
+	LDFLAGS += -lquadmath
+endif
 
 ### Target-specific variables
 ifeq ($(filter debug release,$(MAKECMDGOALS)),release)
@@ -47,7 +55,7 @@ $(TARGET): $(OBJS)
 
 $(BUILD_DIR)/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	@$(CC) $(CFLAGS) -c $< -o $@
+	@$(CC) $(CFLAGS) -c $< -o $@ -DHIGH_PRECISION=$(HIGH_PRECISION)
 
 .PHONY: debug
 debug: $(TARGET)
