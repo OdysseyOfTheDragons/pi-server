@@ -1,0 +1,123 @@
+/**
+ * @file
+ * @brief A database to store the digits of pi.
+ */
+
+#pragma once
+#include <stdint.h>
+
+/** A database instance. */
+typedef struct database_t database;
+
+/** The possible returned states when reading or writing. */
+typedef enum {
+	/// The operation succeeded.
+	DB_SUCCESS,
+
+	/// The database cannot open the given database.
+	DB_OPEN_FAIL,
+
+	/// The database given isn't one of my databases.
+	DB_OPEN_WRONG_FORMAT,
+
+	/// The database cannot migrate the database.
+	/// This is possible if the size is too important on a memory-lacking
+	/// environment.
+	DB_MIGRATE_FAIL,
+
+	/// There is no more block to compute.
+	DB_READ_NO_UNCOMPUTED,
+
+	/// There is no more block to check.
+	DB_READ_NO_UNCHECKED,
+
+	/// The block to read or check is outside the maximum size of the database.
+	DB_READ_OUT_OF_BOUNDS,
+
+	/// The computed block to write has already been computed.
+	DB_WRITE_ALREADY_COMPUTED,
+
+	/// The block to check hasn't been computed.
+	DB_WRITE_CHECK_NOT_COMPUTED,
+
+	/// The block to check has already been checked.
+	DB_WRITE_ALREADY_CHECKED,
+
+	/// The block to write is outside the maximum wize of the database.
+	DB_WRITE_OUT_OF_BOUNDS,
+} db_error;
+
+/** The returned value of all database functions. */
+typedef struct {
+	/// Database return error code.
+	db_error errno;
+
+	union {
+		/// Returned database.
+		database *database;
+
+		/// Returned position.
+		uint64_t position;
+
+		/// Returned block.
+		uint64_t block;
+	} value;
+} db_return;
+
+/**
+ * @brief Opens a database, or creates it if it does not exist.
+ * @param path the path to a database
+ * @param max_digits the maximum number of digits the database can store
+ * @return the database to manipulate
+ */
+db_return db_open(char *path, uint64_t max_digits);
+
+/**
+ * @brief Closes the database.
+ * @param db the database to close
+ */
+void db_close(database *db);
+
+/**
+ * @brief Migrates the database to have a bigger/smaller capacity.
+ * @param database the database to migrate
+ * @param size the new number of digits to allow inside the database
+ */
+void db_migrate(database *db, uint64_t size);
+
+/**
+ * @brief Gets the position of one uncomputed block.
+ * @param database the database to query
+ * @return the position for one uncomputed block
+ */
+db_return db_read_uncomputed(database *db);
+
+/**
+ * @brief Gets the position of one unchecked block.
+ * @param database the database to query
+ * @return the position for one unchecked block
+ */
+db_return db_read_unchecked(database *db);
+
+/**
+ * @brief Reads one block.
+ * @param database the database to query
+ * @param position the position for the block
+ * @return the 16-digit block
+ */
+db_return db_read(database *db, uint64_t position);
+
+/**
+ * @brief Sets one computed block.
+ * @param database the database to query
+ * @param position the position of the block
+ * @param digits the 16-digit block
+ */
+void db_write_computed(database *db, uint64_t position, uint64_t digits);
+
+/**
+ * @brief Sets one block as checked.
+ * @param database the database to query
+ * @param position the block position
+ */
+void db_write_checked(database *db, uint64_t position);
