@@ -1,21 +1,26 @@
+#include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <omp.h>
 
 #include "algorithm.h"
+#include "converter.h"
+
+#define N 30000
 
 int main(void) {
-	int i;
-	char map[] = {
-		'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-		'A', 'B', 'C', 'D', 'E', 'F',
-	};
-	char hex[1001] = { '\0' };
+	uint8_t hex[N + 1] = { 0 };
 
 #pragma omp parallel for schedule(static) shared(hex)
-	for (i = 0; i < 1000; i++) {
-		hex[i] = map[pi(i)];
+	for (uint64_t i = 0; i < N; i++) {
+		hex[i] = pi(i);
 	}
-	printf("%s\n", hex);
-	
+
+	uint8_t *digits = convert(N, hex);
+	for (uint64_t i = 0; i < N; i++)
+		printf("%d", digits[i]);
+	printf("\n");
+
+	free(digits);
 	return 0;
 }

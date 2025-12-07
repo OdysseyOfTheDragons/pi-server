@@ -12,8 +12,8 @@ HIGH_PRECISION ?= 0
 CC := gcc
 BASE_FLAGS := -pedantic -std=c99 -Wall -Wextra -Werror -fopenmp
 DEBUG_FLAGS := -Og -g -ggdb -fsanitize=address
-RELEASE_FLAGS := -O3 -Ofast -ffast-math -march=native -funroll-loops
-LDFLAGS := -flto
+RELEASE_FLAGS := -O3 -march=native
+LDFLAGS := -lmpfr -lgmp -flto
 
 ifeq ($(HIGH_PRECISIO),0)
 	LDFLAGS += -lm
