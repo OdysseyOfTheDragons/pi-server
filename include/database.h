@@ -65,39 +65,46 @@ typedef struct {
 } db_return;
 
 /**
- * @brief Opens a database, or creates it if it does not exist.
+ * @brief Creates a database from scratch.
+ * @param path the path where to create the database
+ * @param max_digits the maximul number of digits inside the database
+ * @return only if the operation succeeded
+ */
+db_return db_create(const char * const path, const uint64_t max_digits);
+
+/**
+ * @brief Opens a database (it must exist).
  * @param path the path to a database
- * @param max_digits the maximum number of digits the database can store
  * @return the database to manipulate
  */
-db_return db_open(char *path, uint64_t max_digits);
+db_return db_open(const char * const path);
 
 /**
  * @brief Closes the database.
  * @param db the database to close
  */
-void db_close(database *db);
+void db_close(database * const db);
 
 /**
  * @brief Migrates the database to have a bigger/smaller capacity.
  * @param database the database to migrate
  * @param size the new number of digits to allow inside the database
  */
-void db_migrate(database *db, uint64_t size);
+db_return db_migrate(database * const db, const uint64_t size);
 
 /**
  * @brief Gets the position of one uncomputed block.
  * @param database the database to query
  * @return the position for one uncomputed block
  */
-db_return db_read_uncomputed(database *db);
+db_return db_read_uncomputed(database * const db);
 
 /**
  * @brief Gets the position of one unchecked block.
  * @param database the database to query
  * @return the position for one unchecked block
  */
-db_return db_read_unchecked(database *db);
+db_return db_read_unchecked(database * const db);
 
 /**
  * @brief Reads one block.
@@ -105,7 +112,7 @@ db_return db_read_unchecked(database *db);
  * @param position the position for the block
  * @return the 16-digit block
  */
-db_return db_read(database *db, uint64_t position);
+db_return db_read(database * const db, const uint64_t position);
 
 /**
  * @brief Sets one computed block.
@@ -113,11 +120,14 @@ db_return db_read(database *db, uint64_t position);
  * @param position the position of the block
  * @param digits the 16-digit block
  */
-void db_write_computed(database *db, uint64_t position, uint64_t digits);
+db_return db_write_computed(
+		database * const db,
+		const uint64_t position,
+		const uint64_t digits);
 
 /**
  * @brief Sets one block as checked.
  * @param database the database to query
  * @param position the block position
  */
-void db_write_checked(database *db, uint64_t position);
+db_return db_write_checked(database * const db, const uint64_t position);

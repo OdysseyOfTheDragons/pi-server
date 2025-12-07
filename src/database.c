@@ -1,6 +1,17 @@
+#include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "database.h"
+
+/** Branchless programming to ceil N / M. */
+#define CEIL_DIV(N, M) (((N) + (M) - 1) / (M))
 
 /*
  * Implementations details.
@@ -78,10 +89,10 @@
 
 struct database_t {
 	/// The database path, in order to reopen / remap.
-	char *path;
+	const char *path;
 
 	/// The database file descriptor.
-	FILE *db;
+	int fd;
 
 	/// The mmap'd file array.
 	uint8_t *map;
@@ -102,8 +113,9 @@ struct database_t {
 	uint64_t length;
 };
 
+#pragma pack(push, 1)
 /** The database header. */
-struct header {
+typedef struct {
 	/// Database magic number.
 	uint8_t magic_number[8];
 
@@ -118,10 +130,122 @@ struct header {
 
 	/// Offset to the data section.
 	uint64_t offset_data;
-};
+
+	/// Padding (reserved for future use).
+	uint8_t padding[31];
+} header_t;
+#pragma pack(pop)
 
 /** The database magic number. */
 #define MAGIC_NUMBER "PiDB\x24\x3F\x6A\x88"
 
 /** The database version. */
 #define VERSION 1
+
+/** The size of the header. */
+#define HEADER_SIZE 64
+
+db_return db_create(const char * const path, const uint64_t max_digits) {
+	assert(max_digits > 0);
+
+	FILE* db = fopen(path, "wb");
+	if (db == NULL)
+		return (db_return){ .errno = DB_OPEN_FAIL };
+
+	// Generate the header to print to the file.
+	//
+	// To know the size of the relocation table, we have the following:
+	// For n digits that can be stored, we have two bitmaps (2 * n).
+	// A bit stores 16 digits (2n / 16).
+	// A byte is 8 bits (2n / 16 / 8).
+	// And we pad it to a full byte using branchless programming:
+	// to ceil N / M, we do (N + M - 1) / M.
+	uint64_t bitmaps_size = 2 * CEIL_DIV(max_digits, 16 * 8);
+
+	header_t header = {
+		.magic_number = MAGIC_NUMBER,
+		.version = VERSION,
+		.max_digits = max_digits,
+
+		// The header is 64 bytes long.
+		.offset_rel = HEADER_SIZE,
+
+		// We compute the relocation table size.
+		.offset_data = HEADER_SIZE + bitmaps_size,
+
+		// Empty padding.
+		.padding = { 0 },
+	};
+
+	// Print the header.
+	fwrite(&header, sizeof(header), 1, db);
+
+	// Print an empty bitmap.
+	uint8_t bitmaps[bitmaps_size];
+	memset(bitmaps, 0, sizeof(bitmaps));
+	fwrite(&bitmaps, sizeof(bitmaps), 1, db);
+
+	// We finished creating the database.
+	// We flush and close.
+	fflush(db);
+	fclose(db);
+
+	return (db_return){ .errno = DB_SUCCESS };
+}
+
+db_return db_open(const char * const path) {
+	// Check if file exists and we have permissions.
+	struct stat st;
+
+	if (
+			stat(path, &st) != 0
+			|| !S_ISREG(st.st_mode)
+			|| access(path, F_OK)
+			|| access(path, R_OK) != 0
+			|| access(path, W_OK) != 0
+		) return (db_return){ .errno = DB_OPEN_FAIL };
+
+	// Open the file.
+	FILE *file = fopen(path, "wb+");
+	if (file == NULL)
+		return (db_return){ .errno = DB_OPEN_FAIL };
+
+	// Read the header.
+	header_t header;
+	if (fread(&header, sizeof(header), 1, file) != 1) {
+		fclose(file);
+		return (db_return){ .errno = DB_OPEN_FAIL };
+	}
+
+	// Verify the magic number and the version.
+	if (memcmp(header.magic_number, MAGIC_NUMBER, 8) != 0
+			|| header.version != VERSION) {
+		fclose(file);
+		return (db_return){ .errno = DB_OPEN_FAIL };
+	}
+
+	// Once we have the file, we can construct the database.
+	database *db = (database *)malloc(sizeof(database));
+
+	db->path = path;
+	db->offset_rel = header.offset_rel;
+	db->offset_data = header.offset_data;
+	db->maximum_digits = header.max_digits;
+	db->offset_bitmap = CEIL_DIV(header.max_digits, 16 * 8);
+	db->length = st.st_size;
+
+	// We now need to mmap the file to access it.
+	int fd = fileno(file);
+	db->fd = fd;
+	db->map =
+		(uint8_t *)mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (db->map == MAP_FAILED) {
+		fclose(file);
+		return (db_return){ .errno = DB_OPEN_FAIL };
+	}
+
+	return (db_return){
+		.errno = DB_SUCCESS,
+		.value = { .database = db }
+	};
+}

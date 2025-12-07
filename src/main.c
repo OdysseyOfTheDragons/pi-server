@@ -6,7 +6,7 @@
 #include "algorithm.h"
 #include "converter.h"
 
-#define N 30000
+#define N 3000
 
 int main(void) {
 	uint8_t hex[N + 1] = { 0 };
