@@ -1,10 +1,7 @@
-/**
- * @file
- * @brief The Bellard's formula implementation.
- */
-
 #include <stdint.h>
 #include <stdio.h>
+
+#include "../include/algorithm.h"
 
 #ifdef HIGH_PRECISION
 #include <quadmath.h>
@@ -26,8 +23,6 @@ typedef long double real;
 #define pow(a,b) (powl(a,b))
 #define floor(a) (floorl(a))
 #endif
-
-#include "algorithm.h"
 
 /** The precision of the fractions. */
 #define EPSILON 1e-17
@@ -114,11 +109,6 @@ static real sn(const uint64_t n, const uint8_t m, const uint8_t p) {
 	return sum;
 }
 
-/**
- * @brief Computes the n-th digit of $\pi$ in base 16.
- * @param n the n-th digit to compute
- * @return the n-th hexadecimal digit of $\pi$
- */
 uint8_t pi(const uint64_t n) {
 	real digit =
 		-  32.0 * sn(n,  4, 1)
