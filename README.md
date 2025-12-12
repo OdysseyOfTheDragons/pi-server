@@ -8,12 +8,9 @@ However, many of the ideas we had in mind to call it a full-fledged project
 never saw the light as we parted ways during our studies.
 
 It gnawed at my soul, therefore I will go back to this project and execute
-what we both wanted at the time. However, a simple copy of the old project
-wouldn't be an interesting project, so I will change the formula used to the
-faster [Bellard's formula](https://en.wikipedia.org/wiki/Bellard%27s_formula).
-
-This formula inherently does the same as the preceding one, but is a bit
-faster. And when we want speed, this is a good idea.
+what we both wanted at the time. However, to make this interesting, I will
+try as best as I can to optimize the code to unseen levels (well, unseen
+by me).
 
 ## Ideas
 

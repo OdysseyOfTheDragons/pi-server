@@ -1,34 +1,14 @@
 #include <stdint.h>
 #include <stdio.h>
-
-#include "../include/algorithm.h"
-
-#ifdef HIGH_PRECISION
 #include <quadmath.h>
+
+#include "algorithm.h"
 
 /** A high-precision float number, to compute 10+ billion digits. */
 typedef __float128 real;
 
-/** Exponentiation. */
-#define pow(a,b) (powq(a,b))
-
-/** Floor. */
-#define floor(a) (floorq(a))
-
-#else
-#include <math.h>
-
-/** A precise float number, faster than __float128. */
-typedef long double real;
-#define pow(a,b) (powl(a,b))
-#define floor(a) (floorl(a))
-#endif
-
 /** The precision of the fractions. */
-#define EPSILON 1e-17
-
-/** Gets (-1)^n. */
-#define sign(n) (n & 1 ? -1.0L : 1.0L)
+#define EPSILON ((real)1e-34)
 
 /**
  * @brief Fast modular exponentiation.
@@ -60,50 +40,42 @@ static uint64_t pow_mod(uint64_t base, uint64_t pow, const uint64_t mod) {
 /**
  * @brief Computes a single fraction sum.
  * @param n the n-th digit to compute
- * @param m the denominator base
- * @param p the denominator offset
+ * @param m the denominator offset
  * @return the infinite sum for a single term
  */
-static real sn(const uint64_t n, const uint8_t m, const uint8_t p) {
+static real sn(const uint64_t n, const uint8_t m) {
 	real sum = 0.0L;
 	uint64_t k = 0;
 
-	// We multiply the whole sum by 16^n = 2^4n so as to directly have the
-	// decimal part. But because there is a division by 2^6 at the beggining,
-	// we need to take this into account.
-	// Later, for each k, we decrement power by 10, so as to avoid computing
-	// 4 * n - 10 * k - 6 each time. A single substraction is faster.
-	// But to do so, we need to add 10 upfront to counterbalance the 10 that
-	// is substracted just after.
-	int64_t power = (int64_t)(4 * n) - 6 + 10;
+	// We multiply the whole sum by 16^n so as to directly have the decimal
+	// part. Thus, the first sum (the most important bits) is with a positive
+	// exponent, and the tail sum is with a negative exponent.
+	
+	// We precompute 1/16 to optimize the tail loop.
+	const real inverse_16 = 1.0 / (real)16.0;
+	real power = 1.0;
 
+	real numerator;
 	uint64_t denominator;
 	real term;
 
 	// High-precision part.
-	for (; k <= n; ++k) {
-		denominator = m * k + p;
+	for (; k < n; ++k) {
+		denominator = 8 * k + m;
+		numerator = (real)pow_mod(16ULL, n - k, denominator);
 
-		// To have something like 4n - 6 - 10k.
-		power -= 10;
-		if (power >= 0)
-			term = sign(k) * (real)pow_mod(2ULL, (uint64_t)power, denominator) / (real)denominator;
-		else
-			term = sign(k) / ((real)denominator * pow(2.0L, (real)(-power)));
-
-		sum += term;
+		sum += numerator / (real)denominator;
 	}
 
 	// Low-precision remainder.
 	for (;; ++k) {
-		denominator = m * k + p;
-		power -= 10;
-	   	term = 1 / ((real)denominator * pow(2.0L, (real)(-power)));
+	   	term = power / (real)((real)8.0 * k + m);
 
 		if (term < EPSILON)
 			break;
 
-		sum += sign(k) * term;
+		power *= inverse_16;
+		sum += term;
 	}
 
 	return sum;
@@ -111,15 +83,12 @@ static real sn(const uint64_t n, const uint8_t m, const uint8_t p) {
 
 uint8_t pi(const uint64_t n) {
 	real digit =
-		-  32.0 * sn(n,  4, 1)
-		- 		  sn(n,  4, 3)
-		+ 256.0 * sn(n, 10, 1)
-		-  64.0 * sn(n, 10, 3)
-		-   4.0 * sn(n, 10, 5)
-		-   4.0 * sn(n, 10, 7)
-		+ 		  sn(n, 10, 9);
+		  4.0 * sn(n, 1)
+		- 2.0 * sn(n, 4)
+		-		sn(n, 5)
+		-		sn(n, 6);
 
-	digit -= floor(digit);
+	digit -= floorq(digit);
 
-	return (uint8_t)floor(digit * 16.0L);
+	return (uint8_t)floorq(digit * (real)16.0);
 }

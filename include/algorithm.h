@@ -1,6 +1,6 @@
 /**
  * @file
- * The Bellard's algorithm implementation.
+ * The BBP's algorithm implementation.
  */
 
 #pragma once
