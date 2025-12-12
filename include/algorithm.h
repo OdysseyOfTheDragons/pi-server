@@ -7,8 +7,8 @@
 #include <stdint.h>
 
 /**
- * @brief Computes the n-th digit of $\pi$ in base 16.
- * @param n the n-th digit to compute
- * @return the n-th hexadecimal digit of $\pi$
+ * @brief Computes the n-th digits of $\pi$ in base 16.
+ * @param n the offset to the 16-digit block to compute
+ * @return a 16-digit block of pi digits
  */
-uint8_t pi(const uint64_t n);
+uint64_t pi(const uint64_t n);

@@ -6,14 +6,20 @@
 #include "algorithm.h"
 #include "converter.h"
 
-#define N 100000
+#define N 10000
 
 int main(void) {
-	uint8_t hex[N + 1] = { 0 };
+	uint8_t hex[16 * N + 1] = { 0 };
 
 #pragma omp parallel for schedule(static) shared(hex)
-	for (uint64_t i = 0; i < N; i++) {
-		hex[i] = convert_digit(pi(i));
+	for (uint64_t i = 0; i < N; ++i) {
+		uint64_t digits = pi(i);
+
+		for (uint8_t k = 0; k < 8; ++k) {
+			uint8_t digit = digits >> ((7 - k) * 8);
+			hex[16 * i + 2 * k] 	= convert_digit((digit >> 4) & 0xF);
+			hex[16 * i + 2 * k + 1] = convert_digit(digit 		 & 0xF);
+		}
 	}
 	printf("%s\n", hex);
 
