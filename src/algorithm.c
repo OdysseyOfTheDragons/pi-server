@@ -2,6 +2,7 @@
 #include <string.h>
 #include <quadmath.h>
 
+#include "shared.h"
 #include "algorithm.h"
 
 /** A high-precision float number, to compute 10+ billion digits. */
@@ -17,7 +18,7 @@ typedef unsigned __int128 u128;
  * @brief Fast modular exponentiation.
  * @param pow the power of the exponentiation
  * @param mod the modulo to apply on each step
- * @return base^pow % mod
+ * @return 16^pow % mod
  */
 static uint64_t pow_mod(uint64_t pow, const uint64_t mod) {
 	u128 result = 1;
@@ -42,7 +43,7 @@ static uint64_t pow_mod(uint64_t pow, const uint64_t mod) {
  */
 static f128 sn(const uint64_t n, const uint8_t m) {
 	f128 sum = 0.0Q;
-	uint64_t k = 0;
+	uint64_t k;
 
 	// We multiply the whole sum by 16^n so as to directly have the decimal
 	// part. Thus, the first sum (the most important bits) is with a positive
@@ -52,20 +53,20 @@ static f128 sn(const uint64_t n, const uint8_t m) {
 	const f128 inverse_16 = 1.0Q / 16.0Q;
 	f128 power = 1.0Q;
 
-	f128 numerator;
-	uint64_t denominator;
+	//f128 numerator;
+	//uint64_t denominator;
 	f128 term;
 
 	// High-precision part.
-	for (; k < n; ++k) {
-		denominator = 8.0Q * k + m;
-		numerator = (f128)pow_mod(n - k, denominator);
+	for (k = 0; k < n; ++k) {
+		uint64_t denominator = 8.0Q * k + m;
+		f128 numerator = (f128)pow_mod(n - k, denominator);
 
 		sum += numerator / (f128)denominator;
 	}
 
 	// Low-precision remainder.
-	for (;; ++k) {
+	for (k = n;; ++k) {
 	   	term = power / (f128)(8.0Q * k + m);
 
 		if (term < EPSILON)
@@ -88,16 +89,25 @@ uint64_t pi(const uint64_t n) {
 		-		 sn(offset, 6);
 
 	digit -= floorq(digit);
+
+	// Reveal the first hex digit.
 	digit *= 16.0Q;
 
 	f128 floor;
 	uint64_t ret = 0;
-	for (uint8_t k = 0; k < 16; ++k) {
+	for (uint8_t k = 0; k < BLOCK_SIZE; ++k) {
 		floor = floorq(digit);
 
-		const uint8_t shift = ((8 - 1) - (k / 2)) * 8 + (k & 1 ? 0 : 4);
+		// We want to compile two digits inside a single byte,
+		// and the whole 16-digit block must fit inside a uint64_t.
+		// So when k = 0, we need to shift by 7 bytes.
+		// Also, when k is even, we need to shift 4 more bits to put the digit
+		// in the upper bits of the byte.
+		const uint8_t shift =
+			((BYTE - 1) - (k / 2)) * BYTE + (k & 1 ? 0 : BYTE / 2);
 		ret |= (uint64_t)floor << shift;
 	
+		// Reveal the next hex digit.
 		digit = 16.0Q * (digit - floor);
 	}
 
