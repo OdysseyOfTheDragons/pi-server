@@ -94,28 +94,28 @@ void db_close(database * const db);
 
 /**
  * @brief Migrates the database to have a bigger/smaller capacity.
- * @param database the database to migrate
+ * @param db the database to migrate
  * @param size the new number of digits to allow inside the database
  */
 db_return db_migrate(database * const db, const uint64_t size);
 
 /**
  * @brief Gets the position of one uncomputed block.
- * @param database the database to query
+ * @param db the database to query
  * @return the position for one uncomputed block
  */
 db_return db_read_uncomputed(database * const db);
 
 /**
  * @brief Gets the position of one unchecked block.
- * @param database the database to query
+ * @param db the database to query
  * @return the position for one unchecked block
  */
 db_return db_read_unchecked(database * const db);
 
 /**
  * @brief Is the block at the given position computed?
- * @param database the database to query
+ * @param db the database to query
  * @param position the position of the block to query
  * @return whether the block has been computed
  */
@@ -123,7 +123,7 @@ db_return db_read_is_computed(database * const db, const uint64_t position);
 
 /**
  * @brief Is the block at the given position checked?
- * @param database the database to query
+ * @param db the database to query
  * @param position the position of the block to query
  * @return whether the block has been checked
  */
@@ -131,7 +131,7 @@ db_return db_read_is_checked(database * const db, const uint64_t position);
 
 /**
  * @brief Reads one block.
- * @param database the database to query
+ * @param db the database to query
  * @param position the position for the block
  * @return the 16-digit block
  */
@@ -139,7 +139,7 @@ db_return db_read(database * const db, const uint64_t position);
 
 /**
  * @brief Sets one computed block.
- * @param database the database to query
+ * @param db the database to query
  * @param position the position of the block
  * @param digits the 16-digit block
  */
@@ -150,7 +150,7 @@ db_return db_write_computed(
 
 /**
  * @brief Sets one block as checked.
- * @param database the database to query
+ * @param db the database to query
  * @param position the block position
  */
 db_return db_write_checked(database * const db, const uint64_t position);

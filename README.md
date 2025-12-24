@@ -85,6 +85,13 @@ I must finish to write the database implementation. To do so, I also need
 to implement the exclusive mutexes on the file (concurrent reading, exclusive
 writing).
 
+Then, I need to test the database, to make sure it works perfectly as
+intended. Also, I need to document whether a function takes a position as an
+absolute position or as the block poisition (`i` or `16 * i`). This would
+be better to do something that is a block position (to be the same API
+as for the `pi` function) but it would mean adding a function inside
+`converter` to decode a `uint64_t` down to a `uint8_t[16]`.
+
 To improve performance, I shall use `const`, `restrict`, `register`,
 `inline`, `static` where possible.
 

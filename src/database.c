@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "shared.h"
 #include "database.h"
 
 /** Branchless programming to ceil N / M. */
@@ -161,7 +164,7 @@ db_return db_create(const char * const path, const uint64_t max_digits) {
 	// A byte is 8 bits (2n / 16 / 8).
 	// And we pad it to a full byte using branchless programming:
 	// to ceil N / M, we do (N + M - 1) / M.
-	uint64_t bitmaps_size = 2 * CEIL_DIV(max_digits, 16 * 8);
+	uint64_t bitmaps_size = 2 * CEIL_DIV(max_digits, BLOCK_SIZE * BYTE);
 
 	header_t header = {
 		.magic_number = MAGIC_NUMBER,
@@ -172,7 +175,7 @@ db_return db_create(const char * const path, const uint64_t max_digits) {
 		.offset_rel = HEADER_SIZE,
 
 		// We compute the relocation table size.
-		.offset_data = HEADER_SIZE + bitmaps_size,
+		.offset_data = HEADER_SIZE + 2 * bitmaps_size,
 
 		// Empty padding.
 		.padding = { 0 },
@@ -184,6 +187,7 @@ db_return db_create(const char * const path, const uint64_t max_digits) {
 	// Print an empty bitmap.
 	uint8_t bitmaps[bitmaps_size];
 	memset(bitmaps, 0, sizeof(bitmaps));
+	fwrite(&bitmaps, sizeof(bitmaps), 1, db);
 	fwrite(&bitmaps, sizeof(bitmaps), 1, db);
 
 	// We finished creating the database.
@@ -207,7 +211,7 @@ db_return db_open(const char * const path) {
 		) return (db_return){ .errno = DB_OPEN_FAIL };
 
 	// Open the file.
-	FILE *file = fopen(path, "wb+");
+	FILE *file = fopen(path, "rb+");
 	if (file == NULL)
 		return (db_return){ .errno = DB_OPEN_FAIL };
 
@@ -232,7 +236,7 @@ db_return db_open(const char * const path) {
 	db->offset_rel = header.offset_rel;
 	db->offset_data = header.offset_data;
 	db->maximum_digits = header.max_digits;
-	db->offset_bitmap = CEIL_DIV(header.max_digits, 16 * 8);
+	db->offset_bitmap = CEIL_DIV(header.max_digits, BLOCK_SIZE * BYTE);
 	db->length = st.st_size;
 
 	// We now need to mmap the file to access it.
@@ -259,7 +263,7 @@ void db_close(database * const db) {
 
 /**
  * @brief Reads a position for a block.
- * @param database the database to query
+ * @param db the database to query
  * @param offset if there is an offset in the relocation table to handle
  * @return the position of a bit not set in the relocation header
  *
@@ -277,13 +281,13 @@ static db_return db_read_position(database * const db, const uint64_t offset) {
 		// We parsed k bytes, meaning k * 8 16-digit blocks.
 		// Now we need to know which one inside the current 8 bits is null.
 		const uint8_t byte = db->map[db->offset_rel + offset + k];
-		for (uint8_t shift = 8; shift > 0; --shift) {
+		for (uint8_t shift = BYTE; shift > 0; --shift) {
 			const uint8_t bit = byte >> (shift - 1);
 			if ((bit & 1) == 0) {
 				// We got the position (8 - shift) of the bit inside the byte.
 				return (db_return){
 					.errno = DB_SUCCESS,
-					.value = { .position = 8 * k + (8 - shift) },
+					.value = { .position = BYTE * k + (BYTE - shift) },
 				};
 			}
 		}
@@ -317,20 +321,20 @@ db_return db_read_unchecked(database * const db) {
 
 /**
  * @brief Reads a computed/checked flag.
- * @param database the database to query
+ * @param db the database to query
  * @param position the position of the block to query
  * @param offset an optional offset inside the relocation table
  * @return whether the block at position has its flag set
  */
 static db_return db_read_flag(database * const db, const uint64_t position, const uint64_t offset) {
-	if (position > db->maximum_digits)
+	if (position >= db->maximum_digits)
 		return (db_return){ .errno = DB_READ_OUT_OF_BOUNDS };
 
 	// We first fetch the byte where the block flag is set.
-	const uint8_t byte = db->map[db->offset_rel + offset + position / 8];
+	const uint8_t byte = db->map[db->offset_rel + offset + position / BYTE];
 
 	// We then query the flag.
-	const uint8_t shift = 8 - (position % 8) - 1;
+	const uint8_t shift = BYTE - (position % BYTE) - 1;
 	const bool is_set = (byte >> shift) & 1;
 
 	return (db_return){
@@ -340,11 +344,11 @@ static db_return db_read_flag(database * const db, const uint64_t position, cons
 }
 
 
-db_return db_read_is_computed(database * const db, const uint64_t position) {
+inline db_return db_read_is_computed(database * const db, const uint64_t position) {
 	return db_read_flag(db, position, 0);
 }
 
-db_return db_read_is_checked(database * const db, const uint64_t position) {
+inline db_return db_read_is_checked(database * const db, const uint64_t position) {
 	return db_read_flag(db, position, db->offset_bitmap);
 }
 
@@ -358,15 +362,102 @@ db_return db_read(database * const db, const uint64_t position) {
 
 	// We store the block inside a uint64_t.
 	uint64_t block = 0;
-	for (uint8_t k = 0; k < 8; ++k) {
+	for (uint8_t k = 0; k < BYTE; ++k) {
 		// A 16-byte block fits inside 8 bytes.
 		// So our position must be multiplied by 8.
-		const uint8_t byte = db->map[db->offset_data + 8 * position + k];
-		block = (block << 8) | byte;
+		const uint8_t byte = db->map[db->offset_data + BYTE * position + k];
+		block = (block << BYTE) | byte;
 	}
 
 	return (db_return){
 		.errno = DB_SUCCESS,
 		.value = { .block = block },
 	};
+}
+
+/**
+ * @brief Writes a computed/checked flag.
+ * @param db the database to query
+ * @param position the position of the block to write
+ * @param offset an optional offset inside the relocation table
+ */
+static db_return db_write_flag(database * const db, const uint64_t position, const uint64_t offset) {
+	if (position >= db->maximum_digits)
+		return (db_return){ .errno = DB_WRITE_OUT_OF_BOUNDS };
+
+	// The shift to set the bit.
+	const uint8_t shift = BYTE - (position % BYTE) - 1;
+
+	// We set the flag inside the byte.
+	db->map[db->offset_rel + offset + position / BYTE] |= 1 << shift;
+
+	return (db_return){ .errno = DB_SUCCESS };
+}
+
+/**
+ * @brief Resizes the data portion of the database to be bigger
+ * @param db the database to grow
+ * @param size the new size of the file
+ * @return whether the migration succeeded
+ */
+static inline db_return db_resize(database * const db, const uint64_t size) {
+	if (size < db->length)
+		return (db_return){ .errno = DB_MIGRATE_FAIL };
+
+	if (ftruncate(db->fd, size) == -1)
+		return (db_return){ .errno = DB_MIGRATE_FAIL };
+
+	uint8_t *map = (uint8_t *)mremap(db->map, db->length, size, MREMAP_MAYMOVE);
+	if (map == MAP_FAILED)
+		return (db_return){ .errno = DB_MIGRATE_FAIL };
+
+	db->map = map;
+	db->length = size;
+
+	return (db_return){ .errno = DB_SUCCESS };
+}
+
+db_return db_write_computed(database * const db, const uint64_t position, const uint64_t digits) {
+	db_return is_computed = db_read_is_computed(db, position);
+	if (is_computed.errno != DB_SUCCESS)
+		return is_computed;
+
+	if (is_computed.value.boolean != false)
+		return (db_return){ .errno = DB_WRITE_ALREADY_COMPUTED };
+
+	// If the file is too short, we need to extend it.
+	// Because this manipulates the intrinsics of the database object,
+	// we will need to implement a mutex lock.
+	const uint8_t block_length = BLOCK_SIZE / 2;
+	const uint64_t size = db->offset_data + position / 2 + block_length;
+	if (size >= db->length) {
+		db_return resize = db_resize(db, size);
+		if (resize.errno != DB_SUCCESS)
+			return resize;
+	}
+
+	// We then write the block.
+	printf("#2 Writing %lx\n", digits);
+	for (uint8_t shift = BYTE; shift > 0; --shift) {
+		const uint8_t digit = digits >> ((shift - 1) * BYTE);
+		printf("#1 Write %x at %ld for %ld\n", digit, db->offset_data + position / 2 + BYTE - shift, position);
+		db->map[db->offset_data + position / 2 + BYTE - shift] = digit;
+	}
+	
+	// We then write the flag.
+	db_return set_flag = db_write_flag(db, position, 0);
+
+	return set_flag;
+}
+
+db_return db_write_checked(database * const db, const uint64_t position) {
+	db_return is_checked = db_read_is_checked(db, position);
+	if (is_checked.errno != DB_SUCCESS)
+		return is_checked;
+
+	if (is_checked.value.boolean != false)
+		return (db_return){ .errno = DB_WRITE_ALREADY_CHECKED };
+
+	// We write the flag.
+	return db_write_flag(db, position, db->offset_bitmap);
 }

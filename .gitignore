@@ -1,5 +1,6 @@
 # Ignore build folder
 build
+*.pidb
 
 # Created by https://www.toptal.com/developers/gitignore/api/linux,vim,c
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,vim,c
